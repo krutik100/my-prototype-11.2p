@@ -1,0 +1,126 @@
+// This #include statement was automatically added by the Particle IDE.
+#include <blynk.h>
+
+// This #include statement was automatically added by the Particle IDE.
+#include <ledmatrix-max7219-max7221.h>
+
+// Simple LED Matrix Display with Blynk and Weather Integration 
+// Uses 4x MAX7219 Dot Matrix Modules to display messages
+// Make sure you add these two libraries using the Particle IDE
+
+//#include <ledmatrix-max7219-max7221.h>
+//#include <blynk.h>
+
+char auth[] = "1234"; // Put your blynk token here
+
+LEDMatrix *led;
+
+int bitmapWidth = 8;   // 8 is default
+int webcount = 60001;   // timer to run the weather webhook every 60 seconds
+
+
+String text2 = "Enter Text to View";  //  default string for Blynk texts
+String text3 = "Getting Weather"; // default string for weather
+
+int mode = 0;
+
+int textLength = text.length();
+
+// default position of the text is outside and then scrolls left
+int textX = bitmapWidth;
+int fontWidth = 5, space = 1;
+
+void drawText(String s, int x)
+{
+  int y = 0;
+  for(int i = 0; i < s.length(); i++) {
+    // Adafruit_GFX method
+    led->drawChar(x + i*(fontWidth+space), y, s[i], true, false, 1);
+  }
+}
+
+void setup() {
+  Blynk.begin("97E7kisIJOeIrwvFVYVGoKspfeg9N1P-");   // setup Blynk 
+  // setup pins and library
+  // 1 display per row, 1 display per column
+  // optional pin settings - default: CLK = A0, CS = A1, D_OUT = A2
+  // (pin settings is independent on HW SPI)
+  led = new LEDMatrix(4, 1, A3, A4, A5); // my pins vary from the default
+  // > add every matrix in the order in which they have been connected <
+  // the first matrix in a row, the first matrix in a column
+  // vertical orientation (-90°) and no mirroring - last three args optional
+  // the Wangdd22 Matrix has 4 matrix elements, arranged side-by-side
+  led->addMatrix(3, 0, 0, false, false);
+  led->addMatrix(2, 0, 0, false, false);
+  led->addMatrix(1, 0, 0, false, false);
+  led->addMatrix(0, 0, 0, false, false);
+  mode = 1;
+  
+  Particle.subscribe("hook-response/get_weather", gotWeatherData, MY_DEVICES);   // see particle.io tutorial on weather webhooks
+}
+
+// In the Blynk app, I used the Termianl widget on virtual pin V1 to send text messages for display.  
+BLYNK_WRITE(V1) {
+   String cmd = param[0].asStr();
+   text2 = cmd;
+ //  String content = Time.format("%H:%M");
+  // text2 = cmd + " -- Notiz von " + content;
+   }
+
+// In the Blynk app, I used V2 as a button to toggle mode between weather and texts.
+BLYNK_WRITE(V2){
+    mode = param.asInt();
+}
+
+// This collects data from my get_weather webhook, METAR data in my example.  See the photon tutorial on webhooks to get other data.  https://docs.particle.io/tutorials/integrations/webhooks/
+
+void gotWeatherData(const char *name, const char *data) {
+    text3 = String(data);
+}
+
+void loop() {
+    Blynk.run();   
+
+    if (webcount > 60000) {    // fetch data via the webhook only once a minute
+        Particle.publish("get_weather"); 
+        webcount = 0;
+    }
+
+// pick which text string will be displayed
+    if (mode == 0) {
+        text = text3;
+        textLength = text.length();
+    }    
+    
+    if (mode == 1) {
+        text = text2;
+        textLength = text.length();
+    }
+    
+    webcount = webcount + 1;
+    
+  if(led != NULL) {
+    drawText(text, textX--);
+    // text animation is ending when the whole text is outside the bitmap
+    if(textX < textLength*(fontWidth+space)*(-1)) {
+      // set default text position
+      textX = bitmapWidth;
+      // show heart
+      led->flush();
+      delay(333);   // 1000 is default
+      // turn all pixels off (takes effect after led->flush())
+      led->fillScreen(false);
+    }
+    // draw text
+    led->flush();
+    delay(125);   // 250 is default 
+  }
+  // animations end
+  else if (led != NULL) {
+    // shutdown all displays
+    led->shutdown(true);
+    // free memory
+    delete led;
+    led = NULL;
+  }
+}
